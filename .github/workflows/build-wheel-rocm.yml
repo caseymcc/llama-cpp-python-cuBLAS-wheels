@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
-        rocm: ['5.4.2','5.5','5.6.1']
+        rocm: ['4.5.2','5.4.2','5.5','5.6.1']
     defaults:
       run:
         shell: pwsh
@@ -38,7 +38,7 @@ jobs:
           repository: 'abetlen/llama-cpp-python'
           ref: ${{ inputs.version }}
           submodules: 'recursive'
-          
+
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@v1.2.0
         with:
@@ -48,7 +48,7 @@ jobs:
           haskell: true
           large-packages: false
           swap-storage: false
-          
+
       - name: Install ROCm SDK
         run: |
           [ ! -d /etc/apt/keyrings ] && sudo mkdir --parents --mode=0755 /etc/apt/keyrings
@@ -61,15 +61,15 @@ jobs:
           echo "ROCM_PATH=/opt/rocm" >> $GITHUB_ENV
           echo "HIP_PATH=/opt/rocm" >> $env:GITHUB_ENV
         shell: bash
-          
+
       - uses: actions/setup-python@v3
         with:
           python-version: "3.10"
-          
+
       - name: Install Dependencies
         run: |
           python -m pip install cmake ninja
-        
+
       - name: Build Lib
         run: |
           $env:CC = '/opt/rocm/llvm/bin/clang'
@@ -86,12 +86,12 @@ jobs:
           cmake --build build --config Release --target llama
           $llamalib = (dir './build' -file -recurse).where({$_.name -eq 'libllama.so'})[0].fullname
           Copy-Item $llamalib '../../build'
-        
+
       - uses: actions/upload-artifact@v3
         with:
           name: ${{ format('{0}-rocm-lib-{1}-{2}', runner.os, inputs.version, matrix.rocm) }}
           path: ./build/libllama.so
-          
+
   build_lib_win:
     name: Build ROCm Lib Windows
     runs-on: windows-latest
@@ -105,7 +105,7 @@ jobs:
           repository: 'abetlen/llama-cpp-python'
           ref: ${{ inputs.version }}
           submodules: 'recursive'
-          
+
       - name: Install ROCm SDK
         run: |
           curl -LO https://download.amd.com/developer/eula/rocm-hub/AMD-Software-PRO-Edition-23.Q3-Win10-Win11-For-HIP.exe
@@ -114,15 +114,15 @@ jobs:
           echo 'ROCM_PATH=C:\Program Files\AMD\ROCm\5.5' >> $env:GITHUB_ENV
           echo 'HIP_PATH=C:\Program Files\AMD\ROCm\5.5' >> $env:GITHUB_ENV
           echo "ROCM_VERSION=5.5.1" >> $env:GITHUB_ENV
-          
+
       - uses: actions/setup-python@v3
         with:
           python-version: "3.10"
-          
+
       - name: Install Dependencies
         run: |
           python -m pip install cmake ninja
-        
+
       - name: Build Lib
         run: |
           $env:CC = 'C:\Program Files\AMD\ROCm\5.5\bin\clang.exe'
@@ -134,12 +134,12 @@ jobs:
           cmake -B build -G "Ninja" -DLLAMA_HIPBLAS=ON -DBUILD_SHARED_LIBS=ON '-DGPU_TARGETS=gfx803;gfx900;gfx906:xnack-;gfx908:xnack-;gfx90a:xnack+;gfx90a:xnack-;gfx1010;gfx1012;gfx1030;gfx1100;gfx1101;gfx1102'
           cmake --build build --config Release --target llama
           Copy-Item '.\build\bin\llama.dll' '..\..\build'
-        
+
       - uses: actions/upload-artifact@v3
         with:
           name: ${{ format('{0}-rocm-lib-{1}-{2}', runner.os, inputs.version, '5.5.1') }}
           path: ./build/llama.dll
-          
+
   build_wheels:
     name: Build ${{ matrix.os }} ROCm ${{ matrix.rocm }} Wheel ${{ matrix.pyver }}
     runs-on: ${{ matrix.os }}
@@ -148,8 +148,10 @@ jobs:
       matrix:
         os: [ubuntu-20.04, windows-latest]
         pyver: ["3.8", "3.9", "3.10", "3.11"]
-        rocm: ['5.4.2','5.5','5.5.1','5.6.1']
+        rocm: ['4.5.2','5.4.2','5.5','5.5.1','5.6.1']
         exclude:
+            - os: windows-latest
+              rocm: '4.5.2'
             - os: windows-latest
               rocm: '5.4.2'
             - os: windows-latest
@@ -170,20 +172,20 @@ jobs:
         with:
           repository: 'abetlen/llama-cpp-python'
           ref: ${{ inputs.version }}
-          
+
       - uses: actions/download-artifact@v3
         with:
           name: ${{ format('{0}-rocm-lib-{1}-{2}', runner.os, inputs.version, matrix.rocm) }}
           path: ./llama_cpp
-          
+
       - uses: actions/setup-python@v3
         with:
           python-version: ${{ matrix.pyver }}
-          
+
       - name: Install Dependencies
         run: |
           python -m pip install build wheel cmake scikit-build ninja
-        
+
       - name: Build Wheel
         run: |
           $packageVersion = [version]$env:PCKGVER.TrimStart('v')
@@ -192,7 +194,7 @@ jobs:
           $newsetup = $setup.Replace('package_data={"llama_cpp": ["py.typed"]},',"package_data={'llama_cpp': ['py.typed', '$llamalib']},")
           New-Item 'setup.py' -itemType File -value $newsetup -force
           python setup.py --skip-cmake bdist_wheel egg_info "--tag-build=+rocm$env:ROCM_VERSION"
-          
+
       - name: Upload files to a GitHub release
         id: upload-release
         uses: svenstaro/upload-release-action@2.6.1
@@ -203,7 +205,7 @@ jobs:
           file_glob: true
           make_latest: false
           overwrite: true
-        
+
       - uses: actions/upload-artifact@v3
         if: steps.upload-release.outcome == 'failure'
         with:
